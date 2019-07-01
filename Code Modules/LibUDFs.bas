@@ -161,14 +161,16 @@ End Sub
 'Calculate UDFs in Manual Calculation Mode
 '*******************************************************************************
 Private Sub FastCalculate()
-    m_fastOn = False
-    '
-    On Error GoTo ErrorHandler
-    Dim app As New ExcelAppState: app.StoreState: app.Sleep
-    Application.Calculate
-    app.RestoreState
+    If m_fastOn Then
+        On Error GoTo ErrorHandler
+        Dim app As New ExcelAppState: app.StoreState: app.Sleep
+        Application.Calculate
+        app.RestoreState
+        m_fastOn = False
+    End If
 Exit Sub
 ErrorHandler:
-    'Application State cannot be modified. Just exit
+    'Application State cannot be modified
     'Most likely a UDF will restart the whole triggering process
+    m_fastOn = False
 End Sub
