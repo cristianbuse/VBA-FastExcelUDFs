@@ -104,32 +104,36 @@ Private m_fastOn As Boolean
 '*******************************************************************************
 Public Sub TriggerFastUDFCalculation()
     If m_fastOn Then Exit Sub
-    m_fastOn = True
-    StartTimer milliSeconds:=10
-    ForceCalculationInterruption
+    On Error Resume Next
+    If Application.Calculation = xlCalculationManual Then Exit Sub
+    If Err.Number <> 0 Then Exit Sub
+    On Error GoTo 0
+    If Application.CalculationInterruptKey = xlAnyKey Then
+        m_fastOn = True
+        StartTimer milliSeconds:=10
+        ForceCalculationInterruption
+    Else
+        Debug.Print "[Application.CalculationInterruptKey] must be set to " _
+            & "'xlAnyKey' in order to trigger FastUDF calculation"
+    End If
 End Sub
 
 '*******************************************************************************
 'Generate a fake User Interaction Event in order to pause calculation
 '*******************************************************************************
 Private Sub ForceCalculationInterruption()
-    If Application.CalculationInterruptKey = xlAnyKey Then
-        Const INPUT_MOUSE As Long = 0&
-        Const MOUSEEVENTF_HWHEEL = &H1000 'Horizontal Wheel Scroll
-        Dim GInput As GENERALINPUT
-        '
-        GInput.dwType = INPUT_MOUSE
-        GInput.mi.dwFlags = MOUSEEVENTF_HWHEEL
-        GInput.mi.mouseData = 1 'Must be different from 0
-        '
-        #If Not Mac Then
-            SetFocus Application.hwnd
-            SendInput 1, GInput, Len(GInput)
-        #End If
-    Else
-        Debug.Print "[Application.CalculationInterruptKey] must be set to " _
-            & "'xlAnyKey' in order to trigger FastUDF calculation"
-    End If
+    Const INPUT_MOUSE As Long = 0&
+    Const MOUSEEVENTF_HWHEEL = &H1000 'Horizontal Wheel Scroll
+    Dim GInput As GENERALINPUT
+    '
+    GInput.dwType = INPUT_MOUSE
+    GInput.mi.dwFlags = MOUSEEVENTF_HWHEEL
+    GInput.mi.mouseData = 1 'Must be different from 0
+    '
+    #If Not Mac Then
+        SetFocus Application.hwnd
+        SendInput 1, GInput, Len(GInput)
+    #End If
 End Sub
 
 '*******************************************************************************
