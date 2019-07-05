@@ -104,9 +104,8 @@ Private m_fastOn As Boolean
 '*******************************************************************************
 Public Sub TriggerFastUDFCalculation()
     If m_fastOn Then Exit Sub
-    On Error Resume Next
+    On Error GoTo ErrorHandler
     If Application.Calculation = xlCalculationManual Then Exit Sub
-    If Err.Number <> 0 Then Exit Sub
     On Error GoTo 0
     If Application.CalculationInterruptKey = xlAnyKey Then
         m_fastOn = True
@@ -116,6 +115,10 @@ Public Sub TriggerFastUDFCalculation()
         Debug.Print "[Application.CalculationInterruptKey] must be set to " _
             & "'xlAnyKey' in order to trigger FastUDF calculation"
     End If
+Exit Sub
+ErrorHandler:
+    'Calling this function from an .xlam AddIn when no workbooks are opened
+    '   would generate an error on reading the Application.Calculation property
 End Sub
 
 '*******************************************************************************
