@@ -52,6 +52,7 @@ Attribute VB_Name = "LibUDFs"
 ''==============================================================================
 
 Option Explicit
+Option Private Module
 
 'Windows APIs
 '*******************************************************************************
@@ -133,7 +134,8 @@ Private Sub ForceCalculationInterruption()
     GInput.mi.dwFlags = MOUSEEVENTF_HWHEEL
     GInput.mi.mouseData = 1 'Must be different from 0
     '
-    #If Not Mac Then
+    #If Mac Then
+    #Else
         SetFocus Application.hwnd
         SendInput 1, GInput, Len(GInput)
     #End If
@@ -144,7 +146,8 @@ End Sub
 '   allows VBA code to alter Application State)
 '*******************************************************************************
 Private Sub StartTimer(ByVal milliSeconds As Long)
-    #If Not Mac Then
+    #If Mac Then
+    #Else
         SetTimer Application.hwnd, 0&, ByVal milliSeconds, AddressOf TimerProc
     #End If
 End Sub
@@ -159,7 +162,8 @@ Private Sub TimerProc(ByVal hwnd As LongPtr, ByVal wMsg As Long, ByVal nIDEvent 
 #Else
 Private Sub TimerProc(ByVal hwnd As Long, ByVal wMsg As Long, ByVal nIDEvent As Long, ByVal wTime As Long)
 #End If
-    #If Not Mac Then
+    #If Mac Then
+    #Else
         If KillTimer(hwnd, nIDEvent) Then FastCalculate
     #End If
 End Sub
