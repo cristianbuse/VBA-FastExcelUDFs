@@ -124,28 +124,39 @@ End Sub
 Public Sub WaitForCalculations(ByVal maxSecondsToWait As Integer)
     If Application.Calculation = xlCalculationManual Then Exit Sub
     If maxSecondsToWait <= 0 Then Exit Sub
-    If Application.CalculationState = xlPending Then
-        'There is a bug in Excel when a Volatile function is present: even if
-        '   the Status Bar shows 'Ready', Application.CalculationState could
-        '   still return 'xlPending'
-        'Force state out of pending by marking any formula cell as needing
-        '   recalculation
-        Dim formulaCell As Range
-        '
-        Set formulaCell = GetEditableFormulaCell()
-        If Not formulaCell Is Nothing Then formulaCell.Dirty
-    End If
     '
+    Dim remainingTriesToFixBug As Long: remainingTriesToFixBug = 3
     Dim tStart As Date: tStart = VBA.Now()
     Dim tMax As Date: tMax = tStart + VBA.TimeSerial(0, 0, maxSecondsToWait)
+    '
     Do While Application.CalculationState <> xlDone
         DoEvents
         If VBA.Now() > tMax Then Exit Do
+        If Application.CalculationState = xlPending Then
+            remainingTriesToFixBug = remainingTriesToFixBug - 1
+            If remainingTriesToFixBug < 0 Then Exit Do
+            TryFixingPendingBug
+        End If
     Loop
 End Sub
 
 '*******************************************************************************
 'Utility function for WaitForCalculations method
+'*******************************************************************************
+Private Sub TryFixingPendingBug()
+    'There is a bug in Excel when a Volatile function is present: even if
+    '   the Status Bar shows 'Ready', Application.CalculationState could
+    '   still return 'xlPending'
+    'Force state out of pending by marking any formula cell as needing
+    '   recalculation
+    Dim formulaCell As Range
+    '
+    Set formulaCell = GetEditableFormulaCell()
+    If Not formulaCell Is Nothing Then formulaCell.Dirty
+End Sub
+
+'*******************************************************************************
+'Utility function for TryFixingPendingBug method
 '*******************************************************************************
 Private Function GetEditableFormulaCell() As Range
     Dim wSheet As Worksheet
@@ -159,7 +170,7 @@ Private Function GetEditableFormulaCell() As Range
 End Function
 
 '*******************************************************************************
-'Utility function for WaitForCalculations method
+'Utility function for GetEditableFormulaCell method
 '*******************************************************************************
 Private Function GetEditableFormulaCellFromSheet(wSheet As Worksheet) As Range
     If wSheet.EnableCalculation Then
@@ -187,3 +198,4 @@ Private Function GetEditableFormulaCellFromSheet(wSheet As Worksheet) As Range
         End If
     End If
 End Function
+
