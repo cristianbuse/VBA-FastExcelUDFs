@@ -175,6 +175,7 @@ Private Sub FastCalculate()
     If m_fastOn Then
         On Error GoTo ErrorHandler
         Dim app As New ExcelAppState: app.StoreState: app.Sleep
+        Application.ScreenUpdating = True
         Application.Calculate
         app.RestoreState
         m_fastOn = False
