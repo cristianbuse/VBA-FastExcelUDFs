@@ -2,6 +2,21 @@
 
 FastExcelUDFs is a VBA Project that allows faster User Defined Function (UDF) calculation when Excel is in Automatic Calculation mode.
 
+Having a large number of User Defined Functions (UDFs) can be very slow because of a known bug in Excel that causes the state of the VBE window to be updated for each UDF called when in Automatic Calculation mode. Note that the bug is not present in Manual Calculation mode. If VBE is opened and UDFs are calculating the VBE is flickering and a word [Running] can be observed in the caption.
+
+**Solution**
+
+A call to ```TriggerFastUDFCalculation``` method must be placed in all UDFs.
+The first time this method is called (per each calculation session), 3 things are happening:
+ 1. a boolean flag is set (m_fastOn) in order to run the logic only once per calculation session
+ 2. a Timer is set using Windows API - a callback will be triggered as soon as Excel gets out of Calculation mode
+ 3. a Mouse Input (a mild horizontal scroll) is sent to the Application using a Windows API - this is done in order to get Excel out of Calculation mode. Once Excel is out of Calculation mode the Timer will kick in and the Application will calculate in Manual mode to avoid the mentioned bug.
+
+**Newer Excel versions**
+
+Although it might seem that the bug is not present (i.e. there is no visible difference between using and not using the solution presented here), the bug is still manifesting if the VBA IDE is opened via Alt+F11 or via Developer ribbon tab/Visual Basic.
+
+
 ## Installation
 
 Just import the following 2 code modules in your VBA Project:
