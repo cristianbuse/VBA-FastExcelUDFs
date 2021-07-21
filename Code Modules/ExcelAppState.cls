@@ -65,7 +65,7 @@ Private m_hasStoredCalcMode As Boolean
 Public Sub StoreState()
     With Application
         m_enableEvents = .EnableEvents
-        On Error Resume Next 'In case no Workbook is opened
+        On Error Resume Next 'In case no Workbook is opened (just an AddIn)
         m_calculationMode = .Calculation
         m_hasStoredCalcMode = (Err.Number = 0)
         On Error GoTo 0
@@ -78,9 +78,9 @@ End Sub
 '*******************************************************************************
 'Restore the previously saved application settings
 '*******************************************************************************
-Public Sub RestoreState(Optional ByVal maxSecondsToWait As Integer)
+Public Sub RestoreState(Optional ByVal maxSecondsToWait As Long)
     If Not m_hasStoredState Then
-        Err.Raise 5, TypeName(Me) & ".RestoreState", "State not stored"
+        Err.Raise 5, TypeName(Me) & ".RestoreState", "Nothing to restore"
     End If
     With Application
         If .EnableEvents <> m_enableEvents Then .EnableEvents = m_enableEvents
@@ -113,7 +113,7 @@ End Sub
 '*******************************************************************************
 'Set Application to Normal working mode
 '*******************************************************************************
-Public Sub Wake(Optional ByVal maxSecondsToWait As Integer = 10)
+Public Sub Wake(Optional ByVal maxSecondsToWait As Long = 10)
     With Application
         If Not .EnableEvents Then .EnableEvents = True
         On Error Resume Next
@@ -128,7 +128,7 @@ End Sub
 '*******************************************************************************
 'Wait for the application to finish calculations
 '*******************************************************************************
-Public Sub WaitForCalculations(ByVal maxSecondsToWait As Integer)
+Public Sub WaitForCalculations(ByVal maxSecondsToWait As Long)
     If Application.Calculation = xlCalculationManual Then Exit Sub
     If maxSecondsToWait <= 0 Then Exit Sub
     '
@@ -179,7 +179,7 @@ End Function
 '*******************************************************************************
 'Utility function for GetEditableFormulaCell method
 '*******************************************************************************
-Private Function GetEditableFormulaCellFromSheet(wSheet As Worksheet) As Range
+Private Function GetEditableFormulaCellFromSheet(ByVal wSheet As Worksheet) As Range
     If wSheet.EnableCalculation Then
         Dim rngFormulas As Range
         '
@@ -206,3 +206,11 @@ Private Function GetEditableFormulaCellFromSheet(wSheet As Worksheet) As Range
     End If
 End Function
 
+'*******************************************************************************
+'Safety restore
+'When this instance reference count reaches 0 then restore state if needed
+'Useful in cases where an error occured and the state was not restored properly
+'*******************************************************************************
+Private Sub Class_Terminate()
+    If m_hasStoredState Then Me.RestoreState
+End Sub
