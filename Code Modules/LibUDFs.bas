@@ -120,8 +120,8 @@ Public Sub TriggerFastUDFCalculation()
         StartTimer milliSeconds:=10
         ForceCalculationInterruption
     Else
-        Debug.Print "[Application.CalculationInterruptKey] must be set to " _
-            & "'xlAnyKey' in order to trigger FastUDF calculation"
+        '[Application.CalculationInterruptKey] must be set to xlAnyKey in order
+        '   to trigger FastUDF calculation
     End If
 Exit Sub
 ErrorHandler:
