@@ -131,6 +131,7 @@ End Sub
 Public Sub WaitForCalculations(ByVal maxSecondsToWait As Long)
     If Application.Calculation = xlCalculationManual Then Exit Sub
     If maxSecondsToWait <= 0 Then Exit Sub
+    If UDFMode() Then Exit Sub 'Code running from a UDF in a range/named range
     '
     Dim remainingTriesToFixBug As Long: remainingTriesToFixBug = 3
     Dim tStart As Date: tStart = VBA.Now()
@@ -214,3 +215,17 @@ End Function
 Private Sub Class_Terminate()
     If m_hasStoredState Then Me.RestoreState
 End Sub
+
+'*******************************************************************************
+'Returns a boolean indicating if code was called from a UDF
+'*******************************************************************************
+Private Function UDFMode() As Boolean
+    Dim dispAlerts As Boolean: dispAlerts = Application.DisplayAlerts
+    '
+    On Error Resume Next
+    Application.DisplayAlerts = Not dispAlerts 'Cannot be changed in UDF mode
+    On Error GoTo 0
+    '
+    UDFMode = (Application.DisplayAlerts = dispAlerts)
+    If Not UDFMode Then Application.DisplayAlerts = dispAlerts 'Revert
+End Function
