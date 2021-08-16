@@ -8,10 +8,10 @@ Attribute VB_Creatable = False
 Attribute VB_PredeclaredId = False
 Attribute VB_Exposed = False
 '''=============================================================================
-'' VBA FastExcelUDFs
-'''-------------------------------------------------
-'' https://github.com/cristianbuse/VBA-FastExcelUDFs
-'''-------------------------------------------------
+''' VBA FastExcelUDFs
+'''--------------------------------------------------
+''' https://github.com/cristianbuse/VBA-FastExcelUDFs
+'''--------------------------------------------------
 ''' MIT License
 '''
 ''' Copyright (c) 2019 Ion Cristian Buse

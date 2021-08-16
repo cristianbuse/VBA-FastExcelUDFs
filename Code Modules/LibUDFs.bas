@@ -1,9 +1,9 @@
 Attribute VB_Name = "LibUDFs"
 '''=============================================================================
-'' VBA FastExcelUDFs
-'''-------------------------------------------------
-'' https://github.com/cristianbuse/VBA-FastExcelUDFs
-'''-------------------------------------------------
+''' VBA FastExcelUDFs
+'''--------------------------------------------------
+''' https://github.com/cristianbuse/VBA-FastExcelUDFs
+'''--------------------------------------------------
 ''' MIT License
 '''
 ''' Copyright (c) 2019 Ion Cristian Buse
