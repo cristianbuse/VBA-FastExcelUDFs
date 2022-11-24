@@ -29,60 +29,46 @@ Attribute VB_Name = "LibUDFs"
 ''
 ''==============================================================================
 '' Description:
-''    Having a large number of User Defined Functions (UDFs) can be very slow
-''       because of a known bug in Excel that causes the state of the VBE window
-''       to be updated for each UDF called when in Automatic Calculation mode.
-''    Note that the bug is not present in Manual Calculation mode.
-''    If VBE is opened and UDFs are calculating the VBE is flickering and a
-''        word [Running] can be observed in the caption.
+''  - Having a large number of User Defined Functions (UDFs) can be very slow
+''    because of a known bug in Excel that causes the state of the VBE window to
+''    be updated for each UDF
+''  - Note that the bug is not present if the calculation is triggered from
+''    outside of the UDF context e.g. from a macro
+''  - If VBE is open and UDFs are calculating then the VBE is flickering and a
+''    word [Running] can be observed in the caption
 '' Solution:
-''    A call to <TriggerFastUDFCalculation> method must be placed in all UDFs.
-''    The first time this method is called, 3 things happen:
-''        1) a boolean flag is set (m_fastOn) in order to run the logic only
-''           once per calculation session
-''        2) a Timer is set using Windows API - a callback will be triggered as
-''           soon as Excel gets out of Calculation mode
-''        3) A Mouse Input (a mild horizontal scroll) is sent to the Application
-''           using a Windows API - this is done in order to get Excel out of
-''           Calculation mode
-''    Once Excel is out of Calculation mode the Timer will kick in and the
-''        Application will calculate in Manual mode to avoid the mentioned bug.
+''  - A call to 'TriggerFastUDFCalculation' method must be placed in all UDFs
+''    so that an async call can do the calculation outside of the UDF context
+''  - The async call is done via the 'QueryClose' event of a form by posting
+''    a SC_CLOSE message to the form's window
+''  - For stability, no more API Timers are used
+''  - A Mouse Input (a mild horizontal scroll) is sent to the Application
+''    using the 'SendInput' API - to get Excel out of Calculation mode
+''  - Once Excel is out of Calculation mode the async call will trigger a
+''    calculation outside of the UDF context thus avoiding the mentioned bug
 '' Notes:
-''    The above mentioned solution works only if the .CalculationInterruptKey
-''       property of the Excel Application is set to 'xlAnyKey' (default)
-''    The Timer terminates itself after the first call to minimize the chance of
-''       generating a crash (see warning below)
-'' Warning:
-''    Do not debug code while the Timer's callback has not been called. This
-''      will cause a crash particularly on x64 versions of Excel
-'' Requires:
-''    - ExcelAppState: class that can store/modify/restore Excel App properties
+''  - This solution works only if the 'CalculationInterruptKey' property of the
+''    Excel Application is set to 'xlAnyKey' (default)
+''  - Flags are in place to minimize the number of calculations needed
 ''==============================================================================
 
 Option Explicit
 Option Private Module
 
-'Windows APIs
-'*******************************************************************************
 #If Mac Then
-    'Support not available
 #ElseIf VBA7 Then
-    Private Declare PtrSafe Function KillTimer Lib "user32" (ByVal hwnd As LongPtr, ByVal nIDEvent As LongPtr) As Long
+    Private Declare PtrSafe Function PostMessage Lib "user32" Alias "PostMessageA" (ByVal hWnd As LongPtr, ByVal wMsg As Long, ByVal wParam As LongPtr, ByVal lParam As LongPtr) As Long
     Private Declare PtrSafe Function SendInput Lib "user32" (ByVal nInputs As Long, pInputs As GENERALINPUT, ByVal cbSize As Long) As Long
-    Private Declare PtrSafe Function SetFocus Lib "user32" (ByVal hwnd As LongPtr) As LongPtr
-    Private Declare PtrSafe Function SetTimer Lib "user32" (ByVal hwnd As LongPtr, ByVal nIDEvent As LongPtr, ByVal uElapse As Long, ByVal lpTimerFunc As LongPtr) As LongPtr
+    Private Declare PtrSafe Function IUnknown_GetWindow Lib "shlwapi" Alias "#172" (ByVal pIUnk As IUnknown, ByVal hWnd As LongPtr) As Long
 #Else
-    Private Declare Function KillTimer Lib "user32" (ByVal hwnd As Long, ByVal nIDEvent As Long) As Long
+    Private Declare Function PostMessage Lib "user32" Alias "PostMessageA" (ByVal hWnd As Long, ByVal wMsg As Long, ByVal wParam As Long, ByVal lParam As Long) As Long
     Private Declare Function SendInput Lib "user32" (ByVal nInputs As Long, pInputs As GENERALINPUT, ByVal cbSize As Long) As Long
-    Private Declare Function SetFocus Lib "user32" (ByVal hwnd As Long) As Long
-    Private Declare Function SetTimer Lib "user32" (ByVal hwnd As Long, ByVal nIDEvent As Long, ByVal uElapse As Long, ByVal lpTimerFunc As Long) As Long
+    Private Declare Function IUnknown_GetWindow Lib "shlwapi" Alias "#172" (ByVal pIUnk As IUnknown, ByVal hWnd As Long) As Long
 #End If
-'*******************************************************************************
 
 'Necessary Structures for SendInput API
-'Note that GENERALINPUT is simplified to work with MOUSEINPUT (ignored Keyboad)
+'Note that GENERALINPUT is simplified to work with MOUSEINPUT (ignored Keyboard)
 'https://docs.microsoft.com/en-gb/windows/desktop/api/winuser/ns-winuser-taginput
-'*******************************************************************************
 Private Type MOUSEINPUT
     dx As Long
     dy As Long
@@ -90,7 +76,7 @@ Private Type MOUSEINPUT
     dwFlags As Long
     time As Long
     #If Win64 Then
-        dwExtraInfo As LongPtr
+        dwExtraInfo As LongLong
         dummyMemoryOffset As Long
     #Else
         dwExtraInfo As Long
@@ -103,94 +89,75 @@ Private Type GENERALINPUT
     #End If
     mi As MOUSEINPUT
 End Type
-'*******************************************************************************
 
-'Boolean tracking if TriggerFastUDFCalculation was already called
-Private m_fastOn As Boolean
+Private m_calculationInProgress As Boolean
+Private m_asyncForm As AsyncFormCall
 
 '*******************************************************************************
-'Prepare environment to calculate UDFs in Manual Calculation Mode
+'Try to trigger a calculation outside of the UDF context
 '*******************************************************************************
 Public Sub TriggerFastUDFCalculation()
-    If m_fastOn Then Exit Sub
-    On Error GoTo ErrorHandler
+    If m_calculationInProgress Then Exit Sub
+    '
+    If ThisWorkbook.IsAddin Then Exit Sub
     If Application.Calculation = xlCalculationManual Then Exit Sub
-    On Error GoTo 0
-    If Application.CalculationInterruptKey = xlAnyKey Then
-        m_fastOn = True
-        StartTimer milliSeconds:=10
-        ForceCalculationInterruption
-    Else
-        '[Application.CalculationInterruptKey] must be set to xlAnyKey in order
-        '   to trigger FastUDF calculation
-    End If
-Exit Sub
-ErrorHandler:
-    'Calling this function from an .xlam AddIn when no workbooks are opened
-    '   would generate an error on reading the Application.Calculation property
+    If Application.CalculationInterruptKey <> xlAnyKey Then Exit Sub
+    '
+    MakeAsyncCall
+    InterruptCalculation
 End Sub
+
+'*******************************************************************************
+'Generate an async callback outside of the UDF context
+'*******************************************************************************
+Private Function MakeAsyncCall()
+    Const WM_SYSCOMMAND = &H112
+    Const SC_CLOSE = &HF060
+    Static hWnd As LongPtr
+    '
+    If m_asyncForm Is Nothing Then
+        Set m_asyncForm = New AsyncFormCall
+        #If Mac = 0 Then
+            IUnknown_GetWindow m_asyncForm, VBA.VarPtr(hWnd)
+        #End If
+    End If
+    m_asyncForm.EnableCall = True
+    #If Mac = 0 Then
+        PostMessage hWnd, WM_SYSCOMMAND, SC_CLOSE, 0
+    #End If
+End Function
 
 '*******************************************************************************
 'Generate a fake User Interaction Event in order to pause calculation
 '*******************************************************************************
-Private Sub ForceCalculationInterruption()
+Private Sub InterruptCalculation()
     Const INPUT_MOUSE As Long = 0&
     Const MOUSEEVENTF_HWHEEL = &H1000 'Horizontal Wheel Scroll
     Dim GInput As GENERALINPUT
+    Static s As Long
+    '
+    If s = 0 Then s = 1 Else s = -s
     '
     GInput.dwType = INPUT_MOUSE
     GInput.mi.dwFlags = MOUSEEVENTF_HWHEEL
-    GInput.mi.mouseData = 1 'Must be different from 0
+    GInput.mi.mouseData = s 'Must be different from 0 for the interrupt to work
     '
-    #If Mac Then
-    #Else
-        SetFocus Application.hwnd
+    #If Mac = 0 Then
         SendInput 1, GInput, Len(GInput)
     #End If
 End Sub
 
 '*******************************************************************************
-'Sets a timer that will call back 'TimerProc' outside of the UDF context (this
-'   allows VBA code to alter Application State)
+'Calculate UDFs
 '*******************************************************************************
-Private Sub StartTimer(ByVal milliSeconds As Long)
-    #If Mac Then
-    #Else
-        SetTimer Application.hwnd, 0&, ByVal milliSeconds, AddressOf TimerProc
-    #End If
-End Sub
-
-'*******************************************************************************
-'The Timer Callback Function.
-'The Timer is 'killed' immediately after being triggered to make sure it only
-'   runs once per UDF trigger
-'*******************************************************************************
-#If VBA7 Then
-Private Sub TimerProc(ByVal hwnd As LongPtr, ByVal wMsg As Long, ByVal nIDEvent As LongPtr, ByVal wTime As Long)
-#Else
-Private Sub TimerProc(ByVal hwnd As Long, ByVal wMsg As Long, ByVal nIDEvent As Long, ByVal wTime As Long)
-#End If
-    #If Mac Then
-    #Else
-        If KillTimer(hwnd, nIDEvent) Then FastCalculate
-    #End If
-End Sub
-
-'*******************************************************************************
-'Calculate UDFs in Manual Calculation Mode
-'*******************************************************************************
-Private Sub FastCalculate()
-    If m_fastOn Then
-        On Error GoTo ErrorHandler
-        Dim app As New ExcelAppState: app.StoreState: app.Sleep
-        Application.ScreenUpdating = True
-        Application.Calculate
-        app.RestoreState
-        m_fastOn = False
-    End If
-Exit Sub
-ErrorHandler:
-    'Application State cannot be modified
-    'Most likely a UDF will restart the whole triggering process
-    m_fastOn = False
+Public Sub FastCalculate()
+    m_calculationInProgress = True
+    m_asyncForm.EnableCall = False
+    '
+    On Error Resume Next
+    Application.Calculate
+    If Application.CalculationState <> xlDone Then Application.Calculate
+    On Error GoTo 0
+    '
+    m_calculationInProgress = False
 End Sub
