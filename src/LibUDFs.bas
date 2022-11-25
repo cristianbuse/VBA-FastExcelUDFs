@@ -92,6 +92,7 @@ End Type
 
 Private m_calculationInProgress As Boolean
 Private m_asyncForm As AsyncFormCall
+Private m_lastCaller As Range
 
 '*******************************************************************************
 'Try to trigger a calculation outside of the UDF context
@@ -103,9 +104,17 @@ Public Sub TriggerFastUDFCalculation()
     If Application.Calculation = xlCalculationManual Then Exit Sub
     If Application.CalculationInterruptKey <> xlAnyKey Then Exit Sub
     '
+    Set LastCallerRange = Application.Caller
     MakeAsyncCall
     InterruptCalculation
 End Sub
+Private Property Set LastCallerRange(ByRef rCaller As Variant)
+    If TypeName(rCaller) = "Range" Then
+        Set m_lastCaller = rCaller
+    Else
+        Set m_lastCaller = Nothing
+    End If
+End Property
 
 '*******************************************************************************
 'Generate an async callback outside of the UDF context
@@ -115,7 +124,7 @@ Private Function MakeAsyncCall()
     Const SC_CLOSE = &HF060
     Static hWnd As LongPtr
     '
-    If m_asyncForm Is Nothing Then
+    If Not IsFormConnected(m_asyncForm) Then
         Set m_asyncForm = New AsyncFormCall
         #If Mac = 0 Then
             IUnknown_GetWindow m_asyncForm, VBA.VarPtr(hWnd)
@@ -125,6 +134,11 @@ Private Function MakeAsyncCall()
     #If Mac = 0 Then
         PostMessage hWnd, WM_SYSCOMMAND, SC_CLOSE, 0
     #End If
+End Function
+Private Function IsFormConnected(ByVal obj As Object) As Boolean
+    If Not obj Is Nothing Then
+        IsFormConnected = TypeName(obj) <> "UserForm"
+    End If
 End Function
 
 '*******************************************************************************
@@ -152,11 +166,26 @@ End Sub
 '*******************************************************************************
 Public Sub FastCalculate()
     m_calculationInProgress = True
-    m_asyncForm.EnableCall = False
+    If IsFormConnected(m_asyncForm) Then m_asyncForm.EnableCall = False
+    '
+    Dim cKey As XlEnableCancelKey: cKey = Application.EnableCancelKey
+    Dim tries As Long: tries = 3
     '
     On Error Resume Next
-    Application.Calculate
-    If Application.CalculationState <> xlDone Then Application.Calculate
+    Application.Cursor = xlWait
+    Application.EnableCancelKey = xlDisabled
+    Do While Application.CalculationState <> xlDone
+        DoEvents
+        If Application.CalculationState = xlPending Then
+            If m_lastCaller Is Nothing Then Exit Do
+            If tries = 0 Then Exit Do
+            '
+            m_lastCaller.Dirty
+            tries = tries - 1
+        End If
+    Loop
+    Application.Cursor = xlDefault
+    Application.EnableCancelKey = cKey
     On Error GoTo 0
     '
     m_calculationInProgress = False
