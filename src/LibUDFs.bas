@@ -98,12 +98,13 @@ Private m_lastCaller As Range
 'Try to trigger a calculation outside of the UDF context
 '*******************************************************************************
 Public Sub TriggerFastUDFCalculation()
-    If m_calculationInProgress Then Exit Sub
+    If m_calculationInProgress And IsFormConnected(m_asyncForm) Then Exit Sub
     '
     If ThisWorkbook.IsAddin Then Exit Sub
     If Application.Calculation = xlCalculationManual Then Exit Sub
     If Application.CalculationInterruptKey <> xlAnyKey Then Exit Sub
     '
+    m_calculationInProgress = True
     Set LastCallerRange = Application.Caller
     MakeAsyncCall
     InterruptCalculation
