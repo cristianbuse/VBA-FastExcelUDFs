@@ -40,7 +40,7 @@ Attribute VB_Name = "LibUDFs"
 ''  - A call to 'TriggerFastUDFCalculation' method must be placed in all UDFs
 ''    so that an async call can do the calculation outside of the UDF context
 ''  - The async call is done via the 'QueryClose' event of a form by posting
-''    a SC_CLOSE message to the form's window
+''    a WM_DESTROY message to the form's window
 ''  - For stability, no more API Timers are used
 ''  - A Mouse Input (a mild horizontal scroll) is sent to the Application
 ''    using the 'SendInput' API - to get Excel out of Calculation mode
@@ -120,8 +120,7 @@ End Property
 'Generate an async callback outside of the UDF context
 '*******************************************************************************
 Private Function MakeAsyncCall()
-    Const WM_SYSCOMMAND = &H112
-    Const SC_CLOSE = &HF060
+    Const WM_DESTROY As Long = &H2
     Static hWnd As LongPtr
     '
     If Not IsFormConnected(m_asyncForm) Then
@@ -132,7 +131,7 @@ Private Function MakeAsyncCall()
     End If
     m_asyncForm.EnableCall = True
     #If Mac = 0 Then
-        PostMessage hWnd, WM_SYSCOMMAND, SC_CLOSE, 0
+        PostMessage hWnd, WM_DESTROY, 0, 0
     #End If
 End Function
 Private Function IsFormConnected(ByVal obj As Object) As Boolean

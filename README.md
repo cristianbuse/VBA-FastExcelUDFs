@@ -7,7 +7,7 @@ Having a large number of User Defined Functions (UDFs) can be very slow because 
 **Solution**
 
 A call to ```TriggerFastUDFCalculation``` method must be placed in all UDFs so that an async call can do the calculation outside of the UDF context.
-- The async call is done via the ```QueryClose``` event of a form by posting a ```SC_CLOSE``` message to the form's window. For stability, no more API Timers are used (see [old version](https://github.com/cristianbuse/VBA-FastExcelUDFs/tree/a196f1bf830d4e9e6fb0a14cdd81462bffcc0433) using timers - causes crashes particularly on x64).
+- The async call is done via the ```QueryClose``` event of a form by posting a ```WM_DESTROY``` message to the form's window. For stability, no more API Timers are used (see [old version](https://github.com/cristianbuse/VBA-FastExcelUDFs/tree/a196f1bf830d4e9e6fb0a14cdd81462bffcc0433) using timers - causes crashes particularly on x64).
 - A Mouse Input (a mild horizontal scroll) is sent to the Application using the 'SendInput' API - to get Excel out of Calculation mode.
 - Once Excel is out of Calculation mode the async call will trigger a calculation outside of the UDF context thus avoiding the mentioned bug.
 
