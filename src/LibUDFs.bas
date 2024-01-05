@@ -169,7 +169,8 @@ Public Sub FastCalculate()
     If IsFormConnected(m_asyncForm) Then m_asyncForm.EnableCall = False
     '
     Dim cKey As XlEnableCancelKey: cKey = Application.EnableCancelKey
-    Dim tries As Long: tries = 3
+    Dim pendingTries As Long:      pendingTries = 3
+    Dim calculatingTries As Long:  calculatingTries = 3
     '
     On Error Resume Next
     Application.Cursor = xlWait
@@ -178,10 +179,13 @@ Public Sub FastCalculate()
         DoEvents
         If Application.CalculationState = xlPending Then
             If m_lastCaller Is Nothing Then Exit Do
-            If tries = 0 Then Exit Do
+            If pendingTries = 0 Then Exit Do
             '
             m_lastCaller.Dirty
-            tries = tries - 1
+            pendingTries = pendingTries - 1
+        ElseIf Application.CalculationState = xlCalculating Then
+            If calculatingTries = 0 Then Exit Do
+            calculatingTries = calculatingTries - 1
         End If
     Loop
     Application.Cursor = xlDefault
