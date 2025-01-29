@@ -175,6 +175,7 @@ Public Sub FastCalculate()
     On Error Resume Next
     Application.Cursor = xlWait
     Application.EnableCancelKey = xlDisabled
+    Application.Calculate 'Jan-2025 - Fix Application.CalculationState bug
     Do While Application.CalculationState <> xlDone
         DoEvents
         If Application.CalculationState = xlPending Then
