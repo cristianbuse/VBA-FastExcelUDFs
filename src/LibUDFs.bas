@@ -31,7 +31,7 @@ Attribute VB_Name = "LibUDFs"
 '' Description:
 ''  - Having a large number of User Defined Functions (UDFs) can be very slow
 ''    because of a known bug in Excel that causes the state of the VBE window to
-''    be updated for each UDF
+''    be updated for each UDF call
 ''  - Note that the bug is not present if the calculation is triggered from
 ''    outside of the UDF context e.g. from a macro
 ''  - If VBE is open and UDFs are calculating then the VBE is flickering and a
@@ -66,27 +66,26 @@ Option Private Module
     Private Declare Function IUnknown_GetWindow Lib "shlwapi" Alias "#172" (ByVal pIUnk As IUnknown, ByVal hWnd As Long) As Long
 #End If
 
+#If VBA7 = 0 Then
+    Private Enum LongPtr
+        [_]
+    End Enum
+#End If
+
 'Necessary Structures for SendInput API
-'Note that GENERALINPUT is simplified to work with MOUSEINPUT (ignored Keyboard)
-'https://docs.microsoft.com/en-gb/windows/desktop/api/winuser/ns-winuser-taginput
+'Note that INPUT is simplified to work with MOUSEINPUT (ignored Keyboard)
+'https://learn.microsoft.com/en-us/windows/win32/api/winuser/ns-winuser-input
+'https://learn.microsoft.com/en-us/windows/win32/api/winuser/ns-winuser-mouseinput
 Private Type MOUSEINPUT
     dx As Long
     dy As Long
     mouseData As Long
     dwFlags As Long
     time As Long
-    #If Win64 Then
-        dwExtraInfo As LongLong
-        dummyMemoryOffset As Long
-    #Else
-        dwExtraInfo As Long
-    #End If
+    dwExtraInfo As LongPtr
 End Type
-Private Type GENERALINPUT
+Private Type GENERALINPUT 'Cannot use INPUT because it's a reserved keyword
     dwType As Long
-    #If Win64 Then
-        dummyMemoryOffset As Long
-    #End If
     mi As MOUSEINPUT
 End Type
 
@@ -127,7 +126,7 @@ Private Function MakeAsyncCall()
     If Not IsFormConnected(m_asyncForm) Then
         Set m_asyncForm = New AsyncFormCall
         #If Mac = 0 Then
-            IUnknown_GetWindow m_asyncForm, VBA.VarPtr(hWnd)
+            IUnknown_GetWindow m_asyncForm, VarPtr(hWnd)
         #End If
     End If
     m_asyncForm.EnableCall = True
@@ -147,17 +146,19 @@ End Function
 Private Sub InterruptCalculation()
     Const INPUT_MOUSE As Long = 0&
     Const MOUSEEVENTF_HWHEEL = &H1000 'Horizontal Wheel Scroll
-    Dim GInput As GENERALINPUT
-    Static s As Long
+    Static GInput(0 To 1) As GENERALINPUT
     '
-    If s = 0 Then s = 1 Else s = -s
-    '
-    GInput.dwType = INPUT_MOUSE
-    GInput.mi.dwFlags = MOUSEEVENTF_HWHEEL
-    GInput.mi.mouseData = s 'Must be different from 0 for the interrupt to work
-    '
+    If GInput(0).dwType = 0 Then
+        GInput(0).dwType = INPUT_MOUSE
+        GInput(0).mi.dwFlags = MOUSEEVENTF_HWHEEL
+        GInput(0).mi.mouseData = 1 'Horizontal scroll must be different from 0 _
+                                    for the interrupt to work
+        GInput(1).dwType = INPUT_MOUSE
+        GInput(1).mi.dwFlags = MOUSEEVENTF_HWHEEL
+        GInput(1).mi.mouseData = -1 'Opposite scroll to avoid visual changes
+    End If
     #If Mac = 0 Then
-        SendInput 1, GInput, Len(GInput)
+        SendInput 2, GInput(0), LenB(GInput(0))
     #End If
 End Sub
 
@@ -175,7 +176,9 @@ Public Sub FastCalculate()
     On Error Resume Next
     Application.Cursor = xlWait
     Application.EnableCancelKey = xlDisabled
-    Application.Calculate 'Jan-2025 - Fix Application.CalculationState bug
+    If Application.CalculationState = xlDone Then
+        Application.Calculate 'Jan-2025 - Fix Application.CalculationState bug
+    End If
     Do While Application.CalculationState <> xlDone
         DoEvents
         If Application.CalculationState = xlPending Then
